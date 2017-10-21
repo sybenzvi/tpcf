@@ -1,0 +1,21 @@
+
+
+Version 1.20: 
+  - Change to take in redshift and cosmological parameters to evaluate comoving distance,
+  and calculate separations:
+    + Add class cosmology.Cosmology to evaluate comoving distance from redshift.
+    + Change angular-distance g(theta, r) to angular-redshift g(theta, z).
+    + Change comoving distribution P(r) to redshift distribution P(z)
+    + Now class CorrelationFunction will calculate angular distance distribution f(theta)
+    and angular-redshift distribution g(theta, z) in constructor and store as attributes.
+  - Replace .txt input reader with .fits input reader. Now ONLY take in .fits format input.
+
+Version 1.11:
+  - Change function name histogram2points() to hist2point().
+  - In CorrelationFunction.radial_angular_distance(): optimize Tree algorithms
+  The runtime of the Tree algorithms is O(NlogM) where N is the number of points
+  looping through, and M is the number of points in Tree. Now create Tree using the 
+  smaller number of points between galaxies catalog, and angular distribution.
+
+Version 1.10:
+  - Add weighted histogram

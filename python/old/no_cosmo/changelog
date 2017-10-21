@@ -1,0 +1,10 @@
+Version 1.11:
+  - Change function name histogram2points() to hist2point().
+  - In CorrelationFunction.radial_angular_distance(): optimize Tree algorithms
+  The runtime of the Tree algorithms is O(NlogM) where N is the number of points
+  looping through, and M is the number of points in Tree.
+  Now create Tree using the smaller number of points between galaxies catalog,
+  and angular distribution.
+
+Version 1.10:
+  - Add weighted histogram

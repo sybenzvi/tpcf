@@ -1,0 +1,80 @@
+# Copyright: University of Rochester DESI group.
+# Authors: Tri Nguyen, Segev BenZvi, Regina Demina, Tolga Yapici
+
+# JOBS
+# We use divide.py to divide the program into multiple jobs.
+# Arguments:
+#   + Job number: Job number must be an integer from 0 to total_job-1.
+#   + Total jobs: Total number of jobs that will be submitted.
+#   + Configuration: Setting for correlation function. See below.
+#   + Prefix: Prefix of the output files (can include folder path, folder must
+#   exist).
+# Example:
+#   Call "python3 divide.py 2 10 config.cfg out/sample" to use config.cfg as setting and 
+#   compute component output for two-point correlation. The job number is 2 and the total
+#   number of jobs is 10. The output will be in directory "out" as "sample_002.npz"
+# We use combine.py to combine component outputs from divide.py to compute DD(s), DR(s), 
+# RR(s) and correlation function.
+# Arguments:
+#   + Configuration: Setting for correlation function. Must be the same with the one use
+#   for divide.py.
+#   + Prefix: Prefix of the output files from divide.py
+# Example:
+#   Call "python3 combine.py cosmology.cfg out/sample" to combine "out/sample* and 
+#   calculate two-point correlations using the cosmology in cosmology.cfg. 
+#   The output will be in directory "out" as "sample_final.npz"
+
+# CONFIGURATION FILES
+# Configuration files should be divided into python configuration sections.
+# Example:
+# To create section "SAMPLE_SECTION" with parameter "sample_par" and value "sample_val"
+#   [SAMPLE_SECTION]
+#   sample_par=sample_val
+# Parameters provided:
+# Required:
+# Section: [FITS]
+#   - data_filename: Path to galaxies catalog. Should be in .fits format.
+#   - random_filename: Path to randoms catalog. Should be in .fits format
+#   - index: Index of header containing data.
+#   - ra: Name of columns with right ascension data.
+#   - dec: Name of columns with declination data.
+#   - z: Name of columns with redshift data.
+#   - weight: Name of columns with weight data.
+#   - weight_fkp: Name of columns with weight_fkp, or redshift distribution weight.
+#   - weight_sdc: Name of columns with weight_sdc, or weight from star distribution.
+#   - weight_noz: Name of columns with weight_noz, or weight due to redshift failure.
+#   - weight_cp: Name of columns with weight_cp, or wieght due to fiber collision (close pairs).
+#   Note: Import will search first for weight_fkp, weight_sdc, weight_noz, weight_cp and combined
+#   them using equation weight = weight_fkp*weight_sdc*(weight_noz+weight_cp-1). If not found, 
+#   will search for weight instead.
+# Section: [BINNING]
+#   Note: All angular variables have unit of degree. All distance variables have unit of Mpc/h.
+#         Will implement unit input.
+#   - s_max: Maximum separation to consider in two-point correlation.
+#   - theta_max: Maximum angular distance to consider. At minimum radius, angular distance must span at least
+#                 s_max.
+#   - binwidth_ra: Binwidth along x-axis of 2-d angular distribution R(ra, dec).
+#   - binwidth_dec: Binwidth along y-axis of 2-d angular distribution R(ra, dec).
+#   - binwidth_z: Binwidth of redshift distribution P(z).
+#   - binwidth_theta: Binwidth of angular distance distribution f(theta) and binwidth along x-axis of 
+#                     2-d angular-radial distribution g(theta, z).
+#   - binwidth_s: Binwidth of two-point correlation function and separation histogram RR, DR, DD.
+# Section: [REGION]
+#   Note: Specified the region of the sky to calculate the two-point correlation. All angular variables
+#         have unit of degree. All distance variables have unit of Mpc/h. 
+#         If the bounds envelop the catalog, then the full catalog will be used.
+#   - ra_min: Minimum right ascension to consider.
+#   - ra_max: Maximum right ascension to consider.
+#   - dec_min: Minimum declination to consider.
+#   - dec_max: Maximum declination to consider.
+#   - z_min: Minimum redshift to consider.
+#   - z_max: Maximum redshift to consider.
+# Section: [COSMOLOGY]
+#   - hubble0: Hubble constant at present(z=0).
+#   - omega_m0: Relative density of matter at present (z=0).
+#   - omega_b0: Relative density of baryonic matter at present (z=0).
+#   - omega_de0: Relative density of dark energy at present (z=0).
+#   - temp_cmb: Temperature of the CMB (Cosmic Microwave Background) at present (z=0)
+#   - nu_eff: Effective number of neutrino flavor.
+#   - m_nu: Mass of each flavor of neutrino
+# Optional: Not yet implemented.

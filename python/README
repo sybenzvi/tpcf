@@ -1,0 +1,27 @@
+# Copyright: University of Rochester DESI group.
+# Authors: Tri Nguyen, Segev BenZvi, Regina Demina, Tolga Yapici
+# Reference: arXiv:1611.09892 
+# "A Computationally Efficient Approach for Calculating Galaxy Two-Point Correlations"
+
+# MAIN FUNCTIONS
+# Two python modules to calculate two-point correlation function using the method in
+# refered paper. In short, the method assumes the redshift and angular distribution
+# of random galaxies are independent, and proceeds to calculate redshift and
+# angular separation distribution P(z) and f(theta) then applies integration. 
+# Please refer to the refered paper for more information.
+# + Pre-cosmology module will apply cosmological model, then calculate RR, DR, DD and 
+# the two-point correlation using a given
+# + Post-cosmology module will calculate two-point correlation in two steps. In step one, 
+# the components for two-point correlation (e.g. angular separation f(theta) and 
+# angular-redshift g(theta, z)). In step two, cosmological model is applied to
+# calculate two-point correlation function. The result in step one (which takes 
+# majority of run time) is independent of the cosmology and thus different cosmology 
+# models can then be applied. 
+
+# OTHER FUNCTIONS
+# + Finding catalog boundaries
+#   - limit.py return the maximum and minimum RA, DEC, Z of each given catalog, and of 
+#   all given catalogs. 
+#   - Example:
+#       Call "python3 limit.py catalog1 catalog2" will print out the maximum and minimum
+#       RA, DEC, Z of catalog1 and catalog2, and the maximum and minimum RA, DEC, Z of both.
