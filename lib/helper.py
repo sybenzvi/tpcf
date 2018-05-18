@@ -6,6 +6,17 @@ def distance(theta, r1, r2):
     """ Calculate distance between two points at radius r1, r2 separated by angle theta """
     return numpy.sqrt(r1**2+r2**2-2*r1*r2*numpy.cos(theta))
 
+def transverse_distance(theta, r1, r2):
+    return r1*numpy.sin(theta/2.) + r2*numpy.sin(theta/2.)
+
+def parallel_distance(theta, r1, r2):
+    return numpy.fabs(r1*numpy.cos(theta/2.) - r2*numpy.cos(theta/2.))
+
+def calculate_mu(theta, r1, r2):
+    dist   = distance(theta, r1, r2)
+    dist_t = transverse_distance(theta, r1, r2)
+    return numpy.arcsin(dist_t/dist)
+
 class JobHelper(object):
     """ Class to handle multiprocess job """
     def __init__(self, total_jobs):
@@ -55,7 +66,7 @@ class CorrelationHelper(object):
         self.norm = {"dd": None, "dr": None, "rr": None}
 
         # Initialize histogram
-        self.data_data = numpy.zeros((2, bins.nbins('s')))
+        self.data_data = numpy.zeros((8, bins.nbins('s')))
         self.theta_distr = numpy.zeros(bins.nbins('theta'))
         self.rz_theta_distr = numpy.zeros((2, bins.nbins('theta'), bins.nbins('z')))
         self.rz_distr = None
@@ -86,7 +97,7 @@ class CorrelationHelper(object):
             Job manager to handle multiprocess indices. If None, assume one job. """
 
         # Reset previous value of dd
-        self.data_data = numpy.zeros((2, self.bins.nbins('s')))
+        self.data_data = numpy.zeros((8, self.bins.nbins('s')))
 
         # If job_helper is None, assume one job
         if job_helper is None:
@@ -100,11 +111,17 @@ class CorrelationHelper(object):
         nbins_s = self.bins.nbins('s')
         print("- Calculate DD from index {} to {}".format(start, end-1))
         for i, point in enumerate(catalog[start:end]):
-            if i % 10000 is 0:
+            if i % 100 is 0:
                 print(i)
             index, s = tree.query_radius(point[: 3].reshape(1, -1), r=s_max,
                                          return_distance=True)
-
+            #NEED TO ADD THERE TOLGA
+            r1        = numpy.sqrt(numpy.sum(point[:3]**2))
+            neighbors = catalog[index[0]]
+            r2        = [numpy.sqrt(numpy.sum(neighbors[i, 1]**2+neighbors[i, 2]**2+neighbors[i, 3]**2)) for i in range(len(index[0]))]            
+            theta     = [numpy.arccos((-s[0][i]**2 + r1**2 + r2[i]**2)/(2*r1*r2[i])) for i in range(len(index[0]))]
+            
+            mu        = [calculate_mu(theta[i], r1, r2[i]) for i in range(len(index[0]))]
             # Fill weighted distribution
             # weight is the product of the weights of two points
             weights = catalog[:, 3][index[0]]*point[3]
@@ -115,6 +132,12 @@ class CorrelationHelper(object):
             hist, _ = numpy.histogram(s[0], bins=nbins_s, range=(0., s_max))
             self.data_data[1] += hist
 
+            # HERE ARE MY ADDITIONS
+            hist, _ = numpy.histogram(mu, bins=nbins_s, range=(0., s_max), weights=weights)
+            self.data_data[6] += hist
+            hist, _ = numpy.histogram(mu, bins=nbins_s, range=(0., s_max))
+            self.data_data[7] += hist
+            
         # Correction for double counting in the first bin from pairing a galaxy
         # with itself
         self.data_data[0][0] -= numpy.sum(catalog[start:end, 3]**2)
@@ -279,12 +302,21 @@ class CorrelationHelper(object):
             bins_r = 0.5*(bins_r[:-1]+bins_r[1:])
 
             # Calculate 3-dimensional separation matrix
-            dist = distance(bins_theta[:, None, None], bins_r[None, :, None], bins_r[None, None, :])
-
+            dist   = distance(bins_theta[:, None, None], bins_r[None, :, None], bins_r[None, None, :])
+            dist_t = transverse_distance(bins_theta[:, None, None], bins_r[None, :, None], bins_r[None, None, :])
+            dist_p = parallel_distance(bins_theta[:, None, None], bins_r[None, :, None], bins_r[None, None, :])
+            mu     = calculate_mu(bins_theta[:, None, None], bins_r[None, :, None], bins_r[None, None, :])
+            
             # Calculate RR
-            rand_rand[i][0], _ = numpy.histogram(dist, bins=self.bins.bins('s'), weights=weights[0])
-            rand_rand[i][1], _ = numpy.histogram(dist, bins=self.bins.bins('s'), weights=weights[1])
-
+            rand_rand[i][0], _ = numpy.histogram(dist,   bins=self.bins.bins('s'), weights=weights[0])
+            rand_rand[i][1], _ = numpy.histogram(dist,   bins=self.bins.bins('s'), weights=weights[1])
+            rand_rand[i][2], _ = numpy.histogram(dist_t, bins=self.bins.bins('s'), weights=weights[0])
+            rand_rand[i][3], _ = numpy.histogram(dist_t, bins=self.bins.bins('s'), weights=weights[1])
+            rand_rand[i][4], _ = numpy.histogram(dist_p, bins=self.bins.bins('s'), weights=weights[0])
+            rand_rand[i][5], _ = numpy.histogram(dist_p, bins=self.bins.bins('s'), weights=weights[1])
+            rand_rand[i][6], _ = numpy.histogram(mu,     bins=self.bins.bins('s'), weights=weights[0])
+            rand_rand[i][7], _ = numpy.histogram(mu,     bins=self.bins.bins('s'), weights=weights[1])
+            
         rand_rand = numpy.squeeze(rand_rand)
         return rand_rand
 
@@ -314,11 +346,20 @@ class CorrelationHelper(object):
             bins_r = 0.5*(bins_r[:-1]+bins_r[1:])
 
             # Calculate 3-dimensional separation matrix
-            dist = distance(bins_theta[:, None, None], bins_r[None, :, None], bins_r[None, None, :])
-
+            dist   = distance(bins_theta[:, None, None], bins_r[None, :, None], bins_r[None, None, :])
+            dist_t = transverse_distance(bins_theta[:, None, None], bins_r[None, :, None], bins_r[None, None, :])
+            dist_p = parallel_distance(bins_theta[:, None, None], bins_r[None, :, None], bins_r[None, None, :])
+            mu     = calculate_mu(bins_theta[:, None, None], bins_r[None, :, None], bins_r[None, None, :])
+            
             # Calculate DR
-            data_rand[i][0], _ = numpy.histogram(dist, bins=self.bins.bins('s'), weights=weights[0])
-            data_rand[i][1], _ = numpy.histogram(dist, bins=self.bins.bins('s'), weights=weights[1])
+            data_rand[i][0], _ = numpy.histogram(dist,   bins=self.bins.bins('s'), weights=weights[0])
+            data_rand[i][1], _ = numpy.histogram(dist,   bins=self.bins.bins('s'), weights=weights[1])
+            data_rand[i][2], _ = numpy.histogram(dist_t, bins=self.bins.bins('s'), weights=weights[0])
+            data_rand[i][3], _ = numpy.histogram(dist_t, bins=self.bins.bins('s'), weights=weights[1])
+            data_rand[i][4], _ = numpy.histogram(dist_p, bins=self.bins.bins('s'), weights=weights[0])
+            data_rand[i][5], _ = numpy.histogram(dist_p, bins=self.bins.bins('s'), weights=weights[1])
+            data_rand[i][6], _ = numpy.histogram(mu,     bins=self.bins.bins('s'), weights=weights[0])
+            data_rand[i][7], _ = numpy.histogram(mu,     bins=self.bins.bins('s'), weights=weights[1])
 
         data_rand = numpy.squeeze(data_rand)
         return data_rand
@@ -352,17 +393,30 @@ class CorrelationHelper(object):
             bins_r = 0.5*(bins_r[:-1]+bins_r[1:])
 
             # Calculate 3-dimensional separation matrix
-            dist = distance(bins_theta[:, None, None], bins_r[None, :, None], bins_r[None, None, :])
-
+            dist   = distance(bins_theta[:, None, None], bins_r[None, :, None], bins_r[None, None, :])
+            dist_t = transverse_distance(bins_theta[:, None, None], bins_r[None, :, None], bins_r[None, None, :])
+            dist_p = parallel_distance(bins_theta[:, None, None], bins_r[None, :, None], bins_r[None, None, :])
+            mu     = calculate_mu(bins_theta[:, None, None], bins_r[None, :, None], bins_r[None, None, :])
+            
             # Calculate RR and DR
-            rand_rand[i][0], _ = numpy.histogram(dist, bins=self.bins.bins('s'),
-                                                 weights=weights_rr[0])
-            rand_rand[i][1], _ = numpy.histogram(dist, bins=self.bins.bins('s'),
-                                                 weights=weights_rr[1])
-            data_rand[i][0], _ = numpy.histogram(dist, bins=self.bins.bins('s'),
-                                                 weights=weights_dr[0])
-            data_rand[i][1], _ = numpy.histogram(dist, bins=self.bins.bins('s'),
-                                                 weights=weights_dr[1])
+            rand_rand[i][0], _ = numpy.histogram(dist, bins=self.bins.bins('s'), weights=weights_rr[0])                                                 
+            rand_rand[i][1], _ = numpy.histogram(dist, bins=self.bins.bins('s'), weights=weights_rr[1])
+            rand_rand[i][2], _ = numpy.histogram(dist_t, bins=self.bins.bins('s'), weights=weights_rr[0])
+            rand_rand[i][3], _ = numpy.histogram(dist_t, bins=self.bins.bins('s'), weights=weights_rr[1])
+            rand_rand[i][4], _ = numpy.histogram(dist_p, bins=self.bins.bins('s'), weights=weights_rr[0])
+            rand_rand[i][5], _ = numpy.histogram(dist_p, bins=self.bins.bins('s'), weights=weights_rr[1])
+            rand_rand[i][6], _ = numpy.histogram(mu,     bins=self.bins.bins('s'), weights=weights_rr[0])
+            rand_rand[i][7], _ = numpy.histogram(mu,     bins=self.bins.bins('s'), weights=weights_rr[1])
+
+            data_rand[i][0], _ = numpy.histogram(dist, bins=self.bins.bins('s'), weights=weights_dr[0])
+            data_rand[i][1], _ = numpy.histogram(dist, bins=self.bins.bins('s'), weights=weights_dr[1])                                                 
+            data_rand[i][2], _ = numpy.histogram(dist_t, bins=self.bins.bins('s'), weights=weights_dr[0])                                                 
+            data_rand[i][3], _ = numpy.histogram(dist_t, bins=self.bins.bins('s'), weights=weights_dr[1])
+            data_rand[i][4], _ = numpy.histogram(dist_p, bins=self.bins.bins('s'), weights=weights_dr[0])
+            data_rand[i][5], _ = numpy.histogram(dist_p, bins=self.bins.bins('s'), weights=weights_dr[1])
+            data_rand[i][6], _ = numpy.histogram(mu,     bins=self.bins.bins('s'), weights=weights_dr[0])
+            data_rand[i][7], _ = numpy.histogram(mu,     bins=self.bins.bins('s'), weights=weights_dr[1])
+            
         rand_rand = numpy.squeeze(rand_rand)
         data_rand = numpy.squeeze(data_rand)
         return rand_rand, data_rand
