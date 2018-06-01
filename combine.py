@@ -3,10 +3,9 @@
 # Standard Python module
 import argparse
 import glob
-import configparser
 
 # User-defined module
-from lib.myio import save, load, read_cosmology
+from lib.myio import save, load
 from lib.correlation import Correlation
 
 
@@ -36,23 +35,26 @@ def main():
             continue
         helper = next(load(fname))
 
-    if helper.n_cosmo == 1:
-        # Calculate DD, DR, RR, and tpcf
-        data_data = helper.get_dd()
-        rand_rand, data_rand = helper.get_rr_dr()
-        tpcf = Correlation(data_data, data_rand, rand_rand, helper.bins.bins('s'), helper.norm)
-        tpcf_list = [tpcf]
-    else:
-        data = next(load('{}_preprocess.pkl'.format(args.prefix)))['dd']
-        rand_rand, data_rand = helper.get_rr_dr()
+    data = next(load('{}_preprocess.pkl'.format(args.prefix)))['dd']
+    rand_rand = helper.get_rr(num_loops=1)
+    data_rand = helper.get_dr(num_loops=1)
 
-        # Calculate DD, DR, RR, and tpcf given cosmology
-        tpcf_list = [None]*helper.n_cosmo
-        for i, cosmo in enumerate(helper.cosmo_list):
+    # Calculate DD, DR, RR, and tpcf given cosmology
+    n_model = len(helper.models)
+    tpcf_list = [None]*n_model
+
+    if n_model == 1:
+        data_data = helper.get_dd()
+        tpcf = Correlation(data_data, data_rand, rand_rand,
+                           helper.bins.bins('s'), helper.norm)
+        tpcf_list[0] = tpcf
+    else:
+        for i, model in enumerate(helper.models):
             print('- Cosmology Model {}'.format(i+1))
 
             # Calculate DD
-            tree, catalog = data.build_balltree('euclidean', cosmo=cosmo, return_catalog=True)
+            tree, catalog = data.build_balltree(
+                'euclidean', model=model, return_catalog=True)
             helper.set_dd(tree, catalog)
             data_data = helper.get_dd()
 

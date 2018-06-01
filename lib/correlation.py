@@ -1,7 +1,7 @@
 """ Module to handle correlation function """
 
 # Python modules
-import numpy
+import numpy as np
 
 class Correlation(object):
     """ Class to handle correlation function """
@@ -42,8 +42,8 @@ class Correlation(object):
         Outputs:
         + error: ndarray
             Bin errors """
-        uw_err = numpy.sqrt(uw_distr)
-        w_err = numpy.where(uw_err != 0, w_distr/uw_err, 0.)
+        uw_err = np.sqrt(uw_distr)
+        w_err = np.where(uw_err != 0, w_distr/uw_err, 0.)
         return w_err, uw_err
 
     def tpcf(self, weighted=True):
@@ -59,16 +59,16 @@ class Correlation(object):
         # Calculate tpcf
         # tpcf = (dd-2dr+rr)/rr
         tpcf = distr['dd'][0]-2*distr['dr'][0]+distr['rr'][0]
-        tpcf = numpy.where(distr['rr'][0] != 0, tpcf/distr['rr'][0], 0.)
+        tpcf = np.where(distr['rr'][0] != 0, tpcf/distr['rr'][0], 0.)
 
         # Calculate error of tpcf
-        # err^2 = (err_dd^2 + 4*err_dr^2 + (err_rr*(2dr-dd))^2/rr^2)/rr^2
-        tpcf_err = distr['dd'][1]**2+4*(distr['dr'][1])**2
-        tpcf_err += numpy.where(
-            distr['rr'] != 0,
-            (distr['rr'][1]*(2*distr['dr'][0]-distr['dd'][0]))**2/distr['rr'][0]**2, 0)
-        tpcf_err = numpy.where(distr['rr'][0], tpcf_err/distr['rr'][0]**2, 0.)
-        tpcf_err = numpy.sqrt(tpcf_err)
+        # err^2 = err_dd^2/rr^2
+        tpcf_err = distr['dd'][1]/distr['rr'][0]
+        # tpcf_err += np.where(
+            # distr['rr'] != 0,
+            # (distr['rr'][1]*(2*distr['dr'][0]-distr['dd'][0]))**2/distr['rr'][0]**2, 0)
+        # tpcf_err = np.where(distr['rr'][0], tpcf_err/distr['rr'][0]**2, 0.)
+        # tpcf_err = np.sqrt(tpcf_err)
         return tpcf, tpcf_err
 
     def tpcfss(self, weighted=True):

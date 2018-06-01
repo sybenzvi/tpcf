@@ -34,7 +34,7 @@ class Cosmology():
         # Default parameters
         z_min = 0.
         z_max = 3.0
-        step = 0.00001
+        step = 0.00005
 
         # Set table
         n =  int(numpy.ceil((z_max-z_min)/step))

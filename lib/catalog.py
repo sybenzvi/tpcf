@@ -1,7 +1,7 @@
 """ Module to handle galaxy survey catalogs """
 
 # Python modules
-import numpy
+import numpy as np
 from astropy.table import Table
 from sklearn.neighbors import BallTree, KDTree
 
@@ -24,19 +24,18 @@ def hist2point(hist, bins_x, bins_y, exclude_zeros=True):
     # Get bins center and create a grid
     center_x = 0.5*(bins_x[:-1]+bins_x[1:])
     center_y = 0.5*(bins_y[:-1]+bins_y[1:])
-    grid_x, grid_y = numpy.meshgrid(center_x, center_y)
+    grid_x, grid_y = np.meshgrid(center_x, center_y)
     grid_x = grid_x.flatten()
     grid_y = grid_y.flatten()
 
     # Convert the grid into a catalog
     hist = hist.T.flatten()
-    catalog = numpy.array([grid_x, grid_y, hist]).T
+    catalog = np.array([grid_x, grid_y, hist]).T
 
     # Return catalog
     if exclude_zeros:
         zeros = (hist == 0)
-        print('    + Discarding {} zero bins.'.format(numpy.sum(zeros)))
-        return catalog[numpy.logical_not(zeros)]
+        return catalog[np.logical_not(zeros)]
     return catalog
 
 class GalaxyCatalog(object):
@@ -49,7 +48,8 @@ class GalaxyCatalog(object):
             Dictionary with path and properties of catalog file.
             Keys: path, dec, ra, z. Values format: str
         + limit: dict
-            Dictionary with boundaries (inclusive) of catalog. If None, use full catalog.
+            Dictionary with boundaries (inclusive) of catalog.
+            If None, use full catalog.
             Keys: dec, ra, z. Values format (min, max) """
         self.ntotal = 0
         self.catalog = None
@@ -66,12 +66,12 @@ class GalaxyCatalog(object):
             Keys: path, dec, ra, z. Values format: str """
 
         # Read in configuration file
-        print("    + Import catalog from: {}".format(reader['path']))
+        print(" - Import catalog from: {}".format(reader['path']))
 
         # Read in table
         table = Table.read(reader['path'])
-        dec = numpy.deg2rad(table[reader['dec']].data)
-        ra = numpy.deg2rad(table[reader['ra']].data)
+        dec = np.deg2rad(table[reader['dec']].data)
+        ra = np.deg2rad(table[reader['ra']].data)
         z = table[reader['z']].data
         try:
             w = table[reader['weight']]
@@ -82,21 +82,22 @@ class GalaxyCatalog(object):
             w_sdc = table[reader['weight_sdc']].data
             w = w_sdc*w_fkp*(w_noz+w_cp-1)
 
-        self.catalog = numpy.array([dec, ra, z, w]).T
+        self.catalog = np.array([dec, ra, z, w]).T
         self.ntotal = self.catalog.shape[0]
 
-    def get_catalog(self, cosmo=None):
-        """ Get catalog. If cosmology is given, convert redshift to comoving distance
+    def get_catalog(self, model=None):
+        """ Get catalog. If cosmology is given, convert redshift to comoving
+        distance.
         Inputs:
-        + cosmo: cosmology.Cosmology (default=None)
-            Cosmology model to convert comoving to redshift.
+        + model: cosmology.Cosmology (default=None)
+            Cosmology model to convert redshift to comoving distance.
         Outputs:
         + catalog: ndarray
             Data catalog. """
         # If cosmology is given, convert redshift to comoving distance
-        catalog = numpy.copy(self.catalog)
-        if cosmo is not None:
-            catalog[:, 2] = cosmo.z2r(catalog[:, 2])
+        catalog = np.copy(self.catalog)
+        if model is not None:
+            catalog[:, 2] = model.z2r(catalog[:, 2])
         return catalog
 
     def set_limit(self, limit):
@@ -106,18 +107,22 @@ class GalaxyCatalog(object):
             Dictionary with boundaries (inclusive) of catalog
             Keys: dec, ra, z. Values format: (min, max) """
 
-        # Read limit and perform array slicing
-        dec, ra, z = self.catalog[:, :3].T
-        index = ((limit['dec'][0] <= dec) & (dec <= limit['dec'][1])
-                 & (limit['ra'][0] <= ra) & (ra <= limit['ra'][1])
-                 & (limit['z'][0] <= z) & (z <= limit['z'][1]))
+        # Extract min and max values from dictionary
+        min_dec, max_dec = limit['dec']
+        min_ra, max_ra = limit['ra']
+        min_z, max_z = limit['z']
 
-        self.catalog = self.catalog[index]
+        # Set boundaries
+        dec, ra, z = self.catalog[:, :3].T
+        mask = ((min_dec <= dec) & (dec <= max_dec) &
+                (min_ra <= ra) & (ra <= max_ra) &
+                (min_z <= z) & (z <= max_z))
+
+        self.catalog = self.catalog[mask]
         self.ntotal = self.catalog.shape[0]
 
-    def to_rand(self, limit, nbins, cosmo=None):
-        """ Convert into RandomCatalog and return. If given cosmology, convert
-        redshift distribution to comoving distribution.
+    def to_rand(self, limit, nbins):
+        """ Convert into RandomCatalog and return.
         Inputs:
         + limit: list, tuple, ndarray, dict
             Bins range in order 'dec', 'ra', 'z'.
@@ -125,8 +130,6 @@ class GalaxyCatalog(object):
         + nbins: list, tuple, ndarray, dict
             Number of bins in order 'dec', 'ra', 'z'.
             If dict, use values from keys 'dec', 'ra', 'z'
-        + cosmo: cosmology.Cosmology (default=None)
-            Cosmology model to convert comoving to redshift.
         Outputs:
         + rand: RandomCatalog
             Distribution catalog """
@@ -140,10 +143,10 @@ class GalaxyCatalog(object):
             num_bins = (nbins['dec'], nbins['ra'], nbins['z'])
 
         # Calculate comoving distribution
-        rz_distr_w, bins_rz = self.redshift_distr(
-            bins_range[2], num_bins[2], cosmo=cosmo, weighted=True, normed=True)
-        rz_distr_uw, _ = self.redshift_distr(
-            bins_range[2], num_bins[2], cosmo=cosmo, weighted=False, normed=True)
+        z_distr_w, bins_z = self.redshift_distr(
+            bins_range[2], num_bins[2], weighted=True, normed=True)
+        z_distr_uw, _ = self.redshift_distr(
+            bins_range[2], num_bins[2], weighted=False, normed=True)
 
         # Calculate angular distribution as a set of weighted data points
         angular_distr, bins_dec, bins_ra = self.angular_distr(
@@ -151,29 +154,32 @@ class GalaxyCatalog(object):
 
         # Set up DistrCatalog attributes
         rand = RandomCatalog()
-        rand.rz_distr = numpy.array([rz_distr_w, rz_distr_uw])
+        rand.z_distr = np.array([z_distr_w, z_distr_uw])
         rand.angular_distr = hist2point(angular_distr, bins_dec, bins_ra)
-        rand.bins_rz = bins_rz
+        rand.bins_z = bins_z
         rand.bins_dec = bins_dec
         rand.bins_ra = bins_ra
         rand.norm_vars['ntotal'] = self.ntotal
-        rand.norm_vars['sum_w'] = numpy.sum(self.catalog[:, 3])
-        rand.norm_vars['sum_w2'] = numpy.sum(self.catalog[:, 3]**2)
+        rand.norm_vars['sum_w'] = np.sum(self.catalog[:, 3])
+        rand.norm_vars['sum_w2'] = np.sum(self.catalog[:, 3]**2)
 
         return rand
 
-    def redshift_distr(self, limit, nbins, cosmo=None, weighted=False, normed=False):
-        """ Calculate redshift distribution. If cosmology is given, convert redshift
-        to comoving distribution.
+    def redshift_distr(self, limit, nbins, model=None,
+                       weighted=False, normed=False):
+        """ Calculate redshift distribution.
+        If cosmology is given, convert redshift to comoving distance.
         Inputs:
         + limit: list, tuple, ndarray, dict
-            Binning range for redshift histogram. If dict, use value of key 'z'.
+            Binning range for redshift histogram.
+            If dict, use value of key 'z'.
         + nbins: int
             Number of bins for comoving histogram.
-        + cosmo: cosmology.Cosmology (default=None)
+        + model: cosmology.Cosmology (default=None)
             Cosmology model to convert comoving to redshift.
         + weighted: bool (default=False)
-            If True, return weighted histogram. Else return unweighted histogram.
+            If True, return weighted histogram.
+            Else return unweighted histogram.
         + normed: bool (default=False)
             If True, normalized by number of galaxies.
         Outputs:
@@ -186,11 +192,12 @@ class GalaxyCatalog(object):
         z = self.catalog[:, 2]
 
         # If given cosmological model, calculate comoving distribution
-        if cosmo is not None:
-            bins_range = cosmo.z2r(bins_range)
-            z = cosmo.z2r(z)
+        if model is not None:
+            bins_range = model.z2r(bins_range)
+            z = model.z2r(z)
 
-        z_distr, bins_z = numpy.histogram(z, bins=nbins, range=bins_range, weights=weights)
+        z_distr, bins_z = np.histogram(z, bins=nbins, range=bins_range,
+                                       weights=weights)
 
         # Normalized by number of galaxies
         if normed:
@@ -229,13 +236,13 @@ class GalaxyCatalog(object):
 
         # Calculate distribution
         weights = self.catalog[:, 3] if weighted else None
-        angular_distr, bins_dec, bins_ra = numpy.histogram2d(
+        angular_distr, bins_dec, bins_ra = np.histogram2d(
             self.catalog[:, 0], self.catalog[:, 1],
             bins=num_bins, range=bins_range, weights=weights)
 
         # Normalized by number of galaxies
         if normed:
-            angular_distr = 1.*angular_distr/self.catalog.shape[0]
+            angular_distr = 1. * angular_distr / self.catalog.shape[0]
 
         return angular_distr, bins_dec, bins_ra
 
@@ -245,43 +252,46 @@ class GalaxyCatalog(object):
         Unweighted equation:
         - norm = 0.5(ntotal^2-ntotal); ntotal is the size of catalog
         Weighted equation:
-        - norm = 0.5(sum_w^2-sum_w2); sum_w and sum_w2 are the sum of weights and weights squared
+        - norm = 0.5(sum_w^2-sum_w2)
+        where sum_w and sum_w2 are the sum of weights and weights squared
         Outputs:
         + w_norm: float
             Weighted normalization factor
         + uw_norm: float
             Unweighted normalization factor """
 
-        sum_w = numpy.sum(self.catalog[:, 3])
-        sum_w2 = numpy.sum(self.catalog[:, 3]**2)
+        sum_w = np.sum(self.catalog[:, 3])
+        sum_w2 = np.sum(self.catalog[:, 3]**2)
 
-        w_norm = 0.5*(sum_w**2-sum_w2)
-        uw_norm = 0.5*(self.ntotal**2-self.ntotal)
+        w_norm = 0.5 * (sum_w**2 - sum_w2)
+        uw_norm = 0.5 * (self.ntotal**2 - self.ntotal)
 
         return w_norm, uw_norm
 
-    def to_cartesian(self, cosmo):
+    def to_cartesian(self, model):
         """ Return galaxy catalog in Cartesian coordinates
         Inputs:
         + cosmo: cosmology.Cosmology (default=None)
             Cosmology model to convert redshift to comoving.
         Outputs:
-        + catalog: numpy.ndarray
+        + catalog: np.ndarray
             Galaxy catalog in Cartesian coordinate system. """
         dec, ra, z = self.catalog[:, :3].T
-        r = cosmo.z2r(z)
-        catalog = numpy.array([r*numpy.cos(dec)*numpy.cos(ra),
-                               r*numpy.cos(dec)*numpy.sin(ra),
-                               r*numpy.sin(dec),
-                               self.catalog[:, 3]]).T
+        r = model.z2r(z)
+        catalog = np.array([r * np.cos(dec) * np.cos(ra),
+                            r * np.cos(dec) * np.sin(ra),
+                            r * np.sin(dec),
+                            self.catalog[:, 3]]).T
         return catalog
 
-    def build_balltree(self, metric, cosmo=None, return_catalog=False, leaf=40):
-        """ Build a balltree from catalog. If metric is 'euclidean', cosmology is required.
+    def build_balltree(self, metric, model=None, return_catalog=False, leaf=40):
+        """ Build a balltree from catalog. If metric is 'euclidean',
+        cosmology is required.
         Inputs:
         + metric: str
             Metric must be either 'haversine' or 'euclidean'.
-            If metric is 'haversine', build a balltree from DEC and RA coordinates of galaxies.
+            If metric is 'haversine', build a balltree from DEC and RA
+            coordinates of galaxies.
             If metric is 'euclidean', build a 3-dimensional kd-tree
         + return_catalog: bool (default=False)
             If True, return the catalog in balltree
@@ -293,18 +303,20 @@ class GalaxyCatalog(object):
             except in the case that n_samples < leaf_size.
             More details can be found at sklearn.neightbors.BallTree. """
         if metric == 'euclidean':
-            if cosmo is None:
-                raise TypeError('Cosmology must be given if metric is "euclidean".')
+            if model is None:
+                raise TypeError('Cosmology must be given if metric ' +
+                                'is "euclidean".')
             # Convert Celestial coordinate into Cartesian coordinate
-            catalog = self.to_cartesian(cosmo)
+            catalog = self.to_cartesian(model)
             tree = KDTree(catalog[:, :3], leaf_size=leaf, metric='euclidean')
         elif metric == 'haversine':
             catalog = self.catalog[:, :-2]
             tree = BallTree(catalog, leaf_size=leaf, metric=metric)
         else:
-            raise ValueError('Metric must be either "haversine" or "euclidean".')
+            raise ValueError('Metric must be either "haversine" ' +
+                             'or "euclidean".')
 
-        print("    + Creating BallTree with metric {}".format(metric))
+        print(" - Creating BallTree with metric %s " % metric)
 
         # Return KD-tree and the catalog
         if return_catalog:
@@ -313,14 +325,15 @@ class GalaxyCatalog(object):
 
 
 class RandomCatalog(object):
-    """ Class to handle random catalog. Random catalog has the angular and redshift
-    (comoving) distribution, but not the coordinates of each galaxy. """
+    """ Class to handle random catalog. Random catalog has the angular and
+    redshif (comoving) distribution, but not the coordinates of each galaxy. """
 
     def __init__(self):
-        """ Initialize angular, redshift (comoving) distribution, and normalization variables """
-        self.rz_distr = None
+        """ Initialize angular, redshift (comoving) distribution,
+        and normalization variables """
+        self.z_distr = None
         self.angular_distr = None
-        self.bins_rz = None
+        self.bins_z = None
         self.bins_ra = None
         self.bins_dec = None
         self.norm_vars = {'ntotal': None, 'sum_w': None, 'sum_w2': None}
@@ -331,12 +344,13 @@ class RandomCatalog(object):
         Unweighted equation:
         - norm = 0.5(ntotal^2-ntotal); ntotal is the size of catalog
         Weighted equation:
-        - norm = 0.5(sum_w^2-sum_w2); sum_w and sum_w2 are the sum of weights and weights squared
+        - norm = 0.5(sum_w^2-sum_w2);
+        where sum_w and sum_w2 are the sum of weights and weights squared
         Inputs:
         + data_catalog: DataCatalog (default=None)
             If None, calculate the normalization factor for itself (i.e. RR).
-            Otherwise, calculate the normalization factor for correlation distribution
-            with the input catalog (i.e. DR).
+            Otherwise, calculate the normalization factor for
+            correlation distribution with the input catalog (i.e. DR).
         Outputs:
         + w_norm: float
             Weighted normalization factor
@@ -344,12 +358,13 @@ class RandomCatalog(object):
             Unweighted normalization factor """
 
         if data_catalog is not None:
-            w_norm = numpy.sum(data_catalog.catalog[:, 3])*self.norm_vars['sum_w']
-            uw_norm = data_catalog.ntotal*self.norm_vars['ntotal']
+            w_norm = (np.sum(data_catalog.catalog[:, 3]) *
+                      self.norm_vars['sum_w'])
+            uw_norm = data_catalog.ntotal * self.norm_vars['ntotal']
             return w_norm, uw_norm
 
-        w_norm = 0.5*(self.norm_vars['sum_w']**2-self.norm_vars['sum_w2'])
-        uw_norm = 0.5*(self.norm_vars['ntotal']**2-self.norm_vars['ntotal'])
+        w_norm = 0.5 * (self.norm_vars['sum_w']**2 - self.norm_vars['sum_w2'])
+        uw_norm = 0.5 * (self.norm_vars['ntotal']**2 - self.norm_vars['ntotal'])
         return w_norm, uw_norm
 
     def build_balltree(self, return_catalog=False, leaf=40):
@@ -362,8 +377,9 @@ class RandomCatalog(object):
             node is guaranteed to satisfy leaf_size <= n_points <= 2*leaf_size,
             except in the case that n_samples < leaf_size.
             More details can be found at sklearn.neightbors.BallTree."""
-        print("    + Creating BallTree")
-        balltree = BallTree(self.angular_distr[:, :2], leaf_size=leaf, metric='haversine')
+        print("  - Creating BallTree")
+        balltree = BallTree(self.angular_distr[:, :2], leaf_size=leaf,
+                            metric='haversine')
         if return_catalog:
             return balltree, self.angular_distr
         return balltree

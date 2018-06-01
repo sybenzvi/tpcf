@@ -15,61 +15,59 @@ def main():
     """ Convert .fits catalogs and other binning, cosmology information into data structures. """
 
     # Read in cmd argument
-    parser = argparse.ArgumentParser(description='Preprocess galaxy and random catalogs.')
-    parser.add_argument('-c', '-C', '--config', type=str, help='Path to configuration file.')
-    parser.add_argument('-p', '-P', '--prefix', type=str,
-                        help='Output prefix. Preprocess output is saved as PREFIX_preprocess.pkl')
+    parser = argparse.ArgumentParser(
+        description='Preprocess galaxy and random catalogs.')
+    parser.add_argument('-c', '-C', '--config', type=str,
+                        help='Path to configuration file.')
+    parser.add_argument(
+        '-p', '-P', '--prefix', type=str,
+        help='Output prefix. Output is saved as PREFIX_preprocess.pkl')
     parser.add_argument('-i', '-I', '--islice', type=int, default=0,
                         help='Index of Z-slice. From 0 to N-1.')
     parser.add_argument('-n', '-N', '--nslice', type=int, default=1,
                         help='Total number of Z-slices.')
-    parser.add_argument('-a', '-A', '--auto', action='store_true', default=False,
-                        help='Set automatic binning')
+    parser.add_argument('-a', '-A', '--auto', action='store_true',
+                        default=False, help='Set automatic binning')
     parser.add_argument('-b', '-B', '--binwidth', type=float, default=2.00,
-                        help='Binwidth of separation. Enable only if auto is True.')
+                        help='Separation binwidth. Disable if auto is False.')
     parser.add_argument('--version', action='version', version='KITCAT 1.10')
     args = parser.parse_args()
 
-    print("PREPROCESS module")
+    print('PREPROCESS module')
 
-    # Check arguments
+    # Check if arguments are valid
     if args.islice < 0 or args.islice >= args.nslice:
         raise ValueError('islice must be at least 0 and less than nslice.')
 
-    # Read from configuration file
-    print('- Reading configuration file from {}'.format(args.config))
+    # Read the provided configuration file
+    print('- Reading configuration file from %s' % args.config)
     config = configparser.RawConfigParser(os.environ)
     config.read(args.config)
 
-    # Read in cosmology
-    print('- Setting up cosmological models')
-    cosmo_list = read_cosmology(config['COSMOLOGY'])
-    n_cosmo = len(cosmo_list)
-    print('- Number of models: {}'.format(n_cosmo))
+    # Setting up cosmology models
+    print(' - Setting up cosmology models')
+    models = read_cosmology(config['COSMOLOGY'])
 
-    # Read in binning scheme
-    num_bins = None if args.auto else config['NBINS']
-    bins = Bins(config['LIMIT'], cosmo_list, num_bins=num_bins,
-                islice=args.islice, nslice=args.nslice, auto=args.auto, binw_s=args.binwidth)
+    # Setting up binning
+    print(' - Setting up binning')
+    nbins_params = None if args.auto else config['NBINS']
+    auto = args.binwidth if args.auto else None
+    bins = Bins(config['LIMIT'], models,
+                nbins=nbins_params,
+                islice=args.islice, nslice=args.nslice,
+                auto=auto)
+
 
     # Initialize catalog and save dictionary
     print('- Initialize catalog')
     data = GalaxyCatalog(config['GALAXY'], bins.limit) # data catalog
     rand = GalaxyCatalog(config['RANDOM'], bins.limit) # random catalog
-    if n_cosmo > 1:
-        rand = rand.to_rand(bins.limit, bins.num_bins)
-    else:
-        rand = rand.to_rand(bins.limit, bins.num_bins, cosmo_list[0])
+    rand = rand.to_rand(bins.limit, bins.nbins)
     save_dict = {'dd': None, 'dr': None, 'rr': None, 'helper': None}
 
     # Create a kd-tree for DD calculation and pickle
     print('- Setting up DD')
-    if n_cosmo > 1:
-        save_dict['dd'] = data
-    else:
-        tree, catalog = data.build_balltree(metric='euclidean', cosmo=cosmo_list[0],
-                                            return_catalog=True)
-        save_dict['dd'] = {'tree': tree, 'catalog': catalog}
+    save_dict['dd'] = data
 
     # Create a balltree for f(theta), RR calculation and pickle
     print('- Setting up RR')
@@ -85,21 +83,17 @@ def main():
         # Tree from Data, catalog from Random
         tree = data.build_balltree(metric='haversine', return_catalog=False)
         mode = 'data_tree'
-    if n_cosmo > 1:
-        save_dict['dr'] = {'tree': tree,
-                           'data_catalog': data.get_catalog(),
-                           'angular_catalog': catalog,
-                           'mode': mode}
-    else:
-        save_dict['dr'] = {'tree': tree,
-                           'data_catalog': data.get_catalog(cosmo_list[0]),
-                           'angular_catalog': catalog,
-                           'mode': mode}
+    save_dict['dr'] = {'tree': tree,
+                       'data_catalog': data.get_catalog(),
+                       'angular_catalog': catalog,
+                       'mode': mode}
 
     # Save helper object
-    helper = CorrelationHelper(bins, cosmo_list)
-    helper.set_rz_distr(rand.rz_distr)
-    helper.set_norm(norm_dd=data.norm(), norm_dr=rand.norm(data), norm_rr=rand.norm())
+    helper = CorrelationHelper(bins, models)
+    helper.set_z_distr(rand.z_distr)
+    helper.set_norm(norm_dd=data.norm(),
+                    norm_rr=rand.norm(),
+                    norm_dr=rand.norm(data))
     save_dict['helper'] = helper
 
     # Save
